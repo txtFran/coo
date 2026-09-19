@@ -5,7 +5,6 @@ use std::sync::Mutex;
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
 
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct Reminder {
     id: u64,
@@ -18,42 +17,31 @@ struct AppState {
     file_path: PathBuf,
 }
 
-
 // --------------------------------------------------
 // Loading reminders
 // --------------------------------------------------
 
 fn load_reminders(file_path: &PathBuf) -> Vec<Reminder> {
-
     if !file_path.exists() {
         return Vec::new();
     }
 
     match fs::read_to_string(file_path) {
+        Ok(contents) => match serde_json::from_str(&contents) {
+            Ok(reminders) => reminders,
 
-        Ok(contents) => {
-
-            match serde_json::from_str(&contents) {
-
-                Ok(reminders) => reminders,
-
-                Err(error) => {
-                    eprintln!("Failed to parse reminders: {}", error);
-                    Vec::new()
-                }
-
+            Err(error) => {
+                eprintln!("Failed to parse reminders: {}", error);
+                Vec::new()
             }
-
-        }
+        },
 
         Err(error) => {
             eprintln!("Failed to read reminders: {}", error);
             Vec::new()
         }
-
     }
 }
-
 
 // --------------------------------------------------
 // Saving reminders
@@ -63,7 +51,6 @@ fn save_reminders(
     file_path: &PathBuf,
     reminders: &[Reminder],
 ) -> Result<(), String> {
-
     let json = serde_json::to_string_pretty(reminders)
         .map_err(|error| error.to_string())?;
 
@@ -73,7 +60,6 @@ fn save_reminders(
     Ok(())
 }
 
-
 // --------------------------------------------------
 // Get reminders
 // --------------------------------------------------
@@ -82,7 +68,6 @@ fn save_reminders(
 fn get_reminders(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<Reminder>, String> {
-
     let reminders = state
         .reminders
         .lock()
@@ -90,7 +75,6 @@ fn get_reminders(
 
     Ok(reminders.clone())
 }
-
 
 // --------------------------------------------------
 // Add reminder
@@ -101,7 +85,6 @@ fn add_reminder(
     text: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<Reminder, String> {
-
     let mut reminders = state
         .reminders
         .lock()
@@ -127,14 +110,15 @@ fn add_reminder(
     Ok(reminder)
 }
 
+// --------------------------------------------------
+// Toggle reminder
+// --------------------------------------------------
 
-// Completing reminders
 #[tauri::command]
 fn toggle_reminder(
     id: u64,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-
     let mut reminders = state
         .reminders
         .lock()
@@ -145,7 +129,6 @@ fn toggle_reminder(
         .find(|reminder| reminder.id == id);
 
     match reminder {
-
         Some(reminder) => {
             reminder.completed = !reminder.completed;
         }
@@ -153,14 +136,12 @@ fn toggle_reminder(
         None => {
             return Err("Reminder not found".to_string());
         }
-
     }
 
     save_reminders(&state.file_path, &reminders)?;
 
     Ok(())
 }
-
 
 // --------------------------------------------------
 // Delete reminder
@@ -171,7 +152,6 @@ fn delete_reminder(
     id: u64,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-
     let mut reminders = state
         .reminders
         .lock()
@@ -184,7 +164,10 @@ fn delete_reminder(
     Ok(())
 }
 
-#[tauri::command]
+// --------------------------------------------------
+// Update reminder
+// --------------------------------------------------
+
 #[tauri::command]
 fn update_reminder(
     id: u64,
@@ -215,28 +198,40 @@ fn update_reminder(
     Ok(())
 }
 
+// --------------------------------------------------
+// Autostart status
+// --------------------------------------------------
 
-// --------------------------------------------------
-// Application startup
-// --------------------------------------------------
 #[tauri::command]
-fn get_autostart_status(app: tauri::AppHandle) -> Result<bool, String> {
+fn get_autostart_status(
+    app: tauri::AppHandle,
+) -> Result<bool, String> {
     app.autolaunch()
         .is_enabled()
         .map_err(|error| error.to_string())
 }
 
+// --------------------------------------------------
+// Enable autostart
+// --------------------------------------------------
 
 #[tauri::command]
-fn enable_autostart(app: tauri::AppHandle) -> Result<(), String> {
+fn enable_autostart(
+    app: tauri::AppHandle,
+) -> Result<(), String> {
     app.autolaunch()
         .enable()
         .map_err(|error| error.to_string())
 }
 
+// --------------------------------------------------
+// Disable autostart
+// --------------------------------------------------
 
 #[tauri::command]
-fn disable_autostart(app: tauri::AppHandle) -> Result<(), String> {
+fn disable_autostart(
+    app: tauri::AppHandle,
+) -> Result<(), String> {
     app.autolaunch()
         .disable()
         .map_err(|error| error.to_string())?;
@@ -244,9 +239,12 @@ fn disable_autostart(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// --------------------------------------------------
+// Application startup
+// --------------------------------------------------
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-
     let app_data_dir = tauri::path::BaseDirectory::AppData;
 
     let state = tauri::Builder::default()
@@ -259,7 +257,6 @@ pub fn run() {
 
         // Application setup
         .setup(move |app| {
-
             // Find the application's data directory
             let app_data_path = app
                 .path()
@@ -271,41 +268,34 @@ pub fn run() {
                 .map_err(|error| error.to_string())?;
 
             // Location of our JSON file
-            let file_path =
-                app_data_path.join("reminders.json");
+            let file_path = app_data_path.join("reminders.json");
 
             // Load existing reminders
-            let reminders =
-                load_reminders(&file_path);
+            let reminders = load_reminders(&file_path);
 
             // Give the reminders to the application state
             app.manage(AppState {
                 reminders: Mutex::new(reminders),
                 file_path,
             });
-            // Enable starting the application with the computer
 
             Ok(())
-
         })
 
         // Register our commands
-.invoke_handler(tauri::generate_handler![
-    get_reminders,
-    add_reminder,
-    delete_reminder,
-    toggle_reminder,
-    update_reminder,
-    enable_autostart,
-    disable_autostart,
-    is_autostart_enabled
-])
-
+        .invoke_handler(tauri::generate_handler![
+            get_reminders,
+            add_reminder,
+            delete_reminder,
+            toggle_reminder,
+            update_reminder,
+            get_autostart_status,
+            enable_autostart,
+            disable_autostart
+        ])
 
         // Start Tauri
-        .run(
-            tauri::generate_context!()
-        );
+        .run(tauri::generate_context!());
 
     if let Err(error) = state {
         eprintln!("Application error: {}", error);
